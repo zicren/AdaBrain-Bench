@@ -34,20 +34,21 @@ The benchmark includes representative EEG-specific models and recent EEG foundat
 ## Leaderboard (in progress)
 ### Cross-Subject Transfer
 
-<p>
-    <img src="image/table-4.png" alt="Table-4" width="700" height="auto" style="display: block; margin: 0 auto;">
+<p style="text-align:center;">
+    <img src="image/table-4.png" alt="Table-4" style="width:700px; height:auto;">
 </p>
+
 
 ### Multi-Subject Adaptation (Table 3)
 
-<p>
-    <img src="image/table-5.png" alt="Table-5" width="700" height="auto" style="display: block; margin: 0 auto;">
+<p style="text-align:center;">
+    <img src="image/table-5.png" alt="Table-5" style="width:700px; height:auto;">
 </p>
 
 ### Few-Shot Transfer
 
-<p>
-    <img src="image/few-shot.png" alt="Results of Few-shot setting" width="700" height="auto" style="display: block; margin: 0 auto;">
+<p style="text-align:center;">
+    <img src="image/few-shot.png" alt="Results of Few-shot setting" style="width:700px; height:auto;">
 </p>
 
 For additional results and analyses, including the impact of pre-training, number of training subjects, normalization effects, and other key findings, please refer to our full paper.
