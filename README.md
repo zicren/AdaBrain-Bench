@@ -5,7 +5,7 @@
 _Jiamin Wu, Zichen Ren, Junyu Wang, Pengyu Zhu, Yonghao Song, Mianxin Liu, Qihao Zheng, Chi Zhang, Bin Min, Lei Bai, Wanli Ouyang, Chunfeng Song_
 
 <p>
-    <img src="image/overview-of-AdaBrain-Bench.pdf" alt="AdaBrain-Bench" width="700" height="auto" style="display: block; margin: 0 auto;">
+    <img src="image/overview-of-AdaBrain-Bench.jpg" alt="AdaBrain-Bench" width="700" height="auto" style="display: block; margin: 0 auto;">
 </p>
 
 [![arXiv](https://img.shields.io/badge/arXiv-preprint-b31b1b?style=flat&logo=arxiv
@@ -45,7 +45,11 @@ The benchmark includes representative EEG-specific models and recent EEG foundat
 </p>
 
 ### Few-Shot Transfer
-![Few-Shot](image/few-shot.png)
+
+<p>
+    <img src="image/few-shot.png" alt="Results of Few-shot setting" width="700" height="auto" style="display: block; margin: 0 auto;">
+</p>
+
 For additional results and analyses, including the impact of pre-training, number of training subjects, normalization effects, and other key findings, please refer to our full paper.
 
 ## Installation
