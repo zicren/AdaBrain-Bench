@@ -22,9 +22,9 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import json
 import os
-
 from pathlib import Path
 from collections import OrderedDict
+import models.modeling_finetune
 from timm.models import create_model
 from util.optim_factory import create_optimizer, get_parameter_groups, LayerDecayValueAssigner
 from util.utils import NativeScalerWithGradNormCount as NativeScaler
@@ -43,8 +43,9 @@ from models.LMDA import LMDA
 from models.EEGConformer import Conformer
 from models.EEGTransformer import STTransformer
 from models.loss import ClipLoss
-
 from torch.utils.data import random_split, ConcatDataset
+
+os.environ['PYHEALTH_CACHE_PATH'] = '/home/yaozhouheng/.cache/pyhealth/'
 
 # -------------------------------The pre-trained weights of the foundation model---------------------------------------
 finetune_list = {
@@ -63,7 +64,7 @@ def get_args():
     # Fine-tuning parameters
     parser.add_argument('--dataset', default='SEED', type=str, 
                         choices=['SEED', 'SEED-IV', 'BCI-IV-2A', 'SHU', 'SEED-VIG', 'EEGMAT',
-                                 'Sleep-EDF', 'HMC', 'SHHS', 'TUAB', 'TUEV', 'Things-EEG'])
+                                 'Sleep-EDF', 'HMC', 'SHHS', 'TUAB', 'TUEV', 'Siena', 'Things-EEG'])
     parser.add_argument('--model_name', default='LaBraM', type=str,
                         choices=['LaBraM', 'CBraMod', 'EEGPT', 'BIOT', 'EEGNet', 'LMDA', 'EEGConformer', 'ST-Transformer', 'CSBrain', 'CodeBrain'])
     parser.add_argument('--task_mod', default="Classification", type=str, choices=['Classification', 'Regression', 'Retrieval'],
@@ -79,13 +80,16 @@ def get_args():
                         help='normalization methods including z-score, 95-percentile, and unit rescale (0.1mv)')
     
     parser.add_argument('--max_subject', default=8, type=int, help='number of subjects used for spliting validation set')
+    parser.add_argument('--split_root', default='', type=str,
+                        help='Optional directory containing train.json, val.json, and test.json. Overrides the configured split for this run.')
+    parser.add_argument('--experiment_tag', default='', type=str,
+                        help='Optional tag inserted into the output-directory name to keep results from alternative splits separate.')
     parser.add_argument('--sampling_rate', default=200, type=int, choices=[200, 256], help='CSBrain, CodeBrain, BIOT, LaBraM and CBraMod is 200Hz; EEGPT is 256Hz')
     parser.add_argument('--k_shot', default=10, type=float, help='number of shots in the few_shot setting')
     
-
-    parser.add_argument('--logger', type=bool, default=False, help='enable WandB logging for retrieval')
+    parser.add_argument('--logger', action='store_true', help='enable WandB logging for retrieval')
     parser.add_argument('--device', default='cuda', help='device to use for training / testing')
-    parser.add_argument('--save_ckpt', action='store_true', default=True)
+    parser.add_argument('--save_ckpt', action='store_true', default=False)
     parser.add_argument('--num_workers', default=10, type=int)
     parser.add_argument('--disable_eval_during_finetuning', action='store_true', default=False)
     parser.add_argument('--start_epoch', default=0, type=int, help='start epoch')
@@ -331,7 +335,8 @@ class Ada_CSBrain(nn.Module):
         for region in sorted(region_groups.keys()):
             region_electrodes = region_groups[region]
             region_topology = topology[str(region)]
-            sorted_electrodes = sorted(region_electrodes, key=lambda item: region_topology.index(item[1]))
+            topology_order = {channel_name.upper(): index for index, channel_name in enumerate(region_topology)}
+            sorted_electrodes = sorted(region_electrodes, key=lambda item: topology_order[item[1].upper()])
             sorted_indices.extend([e[0] for e in sorted_electrodes])
 
         model = CSBrain(brain_regions=brain_regions, sorted_indices=sorted_indices)
@@ -343,10 +348,10 @@ class Ada_CSBrain(nn.Module):
             for key, value in state_dict.items():
                 new_key = key.replace("module.", "")
                 new_state_dict[new_key] = value
-            model_state_dict = self.model.state_dict()
+            model_state_dict = model.state_dict()
             matching_dict = {k: v for k, v in new_state_dict.items() if k in model_state_dict and v.size() == model_state_dict[k].size()}
             model_state_dict.update(matching_dict)
-            self.model.load_state_dict(model_state_dict)
+            model.load_state_dict(model_state_dict)
         
         model.proj_out = nn.Identity()
         self.main_model = model
@@ -533,7 +538,7 @@ class Ada_STTransformer(nn.Module):
 # -----------------------------Load the models based on args.model_name------------------------------
 def get_models(args, ch_names, num_t):
     from_pretrain = False
-    if args.model_name in ['LaBraM', 'CBraMod', 'EEGPT', 'BIOT', 'CodeBrain']:
+    if args.model_name in ['LaBraM', 'CBraMod', 'EEGPT', 'BIOT', 'CodeBrain', 'CSBrain']:
         if args.finetune_mod in ['full', 'linear']:
             from_pretrain=True
  
@@ -561,7 +566,7 @@ def get_models(args, ch_names, num_t):
         elif args.task_mod == 'Regression':
             model.task_head = RegressionLayers(input_dim=(len(ch_names) * num_t) * 200, hidden_dim=200, output_dim=1, flatten=1)
         elif args.task_mod == 'Retrieval':
-            model.task_head = LinearWithConstraint(len(ch_names) * num_t * 200, 1024, max_norm=1, flatten=1)    
+            model.task_head = LinearWithConstraint(len(ch_names) * num_t * 200, 1024, max_norm=1, flatten=1)
     elif args.model_name == 'CBraMod':
         model = Ada_CBraMod(args, from_pretrain)
         if args.task_mod == 'Classification':
@@ -644,7 +649,15 @@ def get_models(args, ch_names, num_t):
 
 # ------------------------------------------Load the dataset-------------------------------------------------------
 def get_datasets(args, dataset_info):
-    root = dataset_info['root'][args.subject_mod]
+    root = args.split_root or dataset_info['root'][args.subject_mod]
+    if args.split_root:
+        required_files = [os.path.join(root, f'{name}.json') for name in ('train', 'val', 'test')]
+        missing_files = [path for path in required_files if not os.path.isfile(path)]
+        if missing_files:
+            raise FileNotFoundError(
+                '--split_root must contain train.json, val.json, and test.json; missing: '
+                + ', '.join(missing_files)
+            )
     if args.subject_mod == 'fewshot':
         dataset_train = utils.FewShotDataLoader(root + '/train.json', args.sampling_rate, args.norm_method, k_shot=args.k_shot)
         dataset_val = utils.CustomDataLoader(root + '/val.json', args.sampling_rate, args.norm_method)
@@ -684,7 +697,22 @@ def main(args, ds_init):
 
     args.save_ckpt_freq = args.epochs
 
-    args.output_dir = f"finetuning_results/{args.task_mod}/{args.model_name}_results/finetune_{args.finetune_mod}/{args.dataset}_{args.finetune_mod}_epoch{args.epochs}_bs{args.batch_size}_lr{args.lr}_{args.norm_method}_{args.seed}"
+    if args.subject_mod == "fewshot":
+        setting_name = f"{args.subject_mod}_{args.k_shot}_setting"
+    else:
+        setting_name = f"{args.subject_mod}_setting"
+
+    subject_suffix = (f"_sub{args.subject_id}" if args.task_mod == "Retrieval" else "")
+
+    experiment_tag = f"_{args.experiment_tag}" if args.experiment_tag else ""
+    args.output_dir = (
+        f"finetuning_results/{args.task_mod}/{args.model_name}_results/"
+        f"{setting_name}/finetune_{args.finetune_mod}/"
+        f"{args.dataset}_{args.finetune_mod}{subject_suffix}"
+        f"_epoch{args.epochs}_bs{args.batch_size}_lr{args.lr}"
+        f"_{args.norm_method}_wd{args.weight_decay}{experiment_tag}_{args.seed}"
+    )
+
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
     print(args)
@@ -876,10 +904,7 @@ def main(args, ds_init):
             wd_schedule_values=wd_schedule_values, num_training_steps_per_epoch=num_training_steps_per_epoch)
         
         # Save results to a CSV file
-        results_dir = os.path.join(args.output_dir, current_time)
-        os.makedirs(results_dir, exist_ok=True)
-
-        results_file = f"{results_dir}/results.csv"
+        results_file = f"{args.output_dir}/results.csv"
         with open(results_file, 'w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=results[0].keys())
             writer.writeheader()

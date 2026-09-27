@@ -2,8 +2,7 @@
   
 # AdaBrain-Bench: Benchmarking Brain Foundation Models for Brain-Computer Interface Applications<br>
 
-_Jiamin Wu, Zichen Ren, Junyu Wang, Pengyu Zhu, Yonghao Song, Mianxin Liu, 
-Qihao Zheng, Lei Bai, Wanli Ouyang, Chunfeng Song_
+_Jiamin Wu, Zichen Ren, Junyu Wang, Pengyu Zhu, Yonghao Song, Mianxin Liu, Qihao Zheng, Lei Bai, Wanli Ouyang, Chunfeng Song_
 
 <p>
     <img src="image/overview-of-AdaBrain-Bench.png" alt="AdaBrain-Bench" width="700" height="auto" style="display: block; margin: 0 auto;">
@@ -160,7 +159,7 @@ To run the Retrieval task, you only need to execute a single command in the comm
 
 Take LaBraM and EEGPT on Things-EEG as examples.
 ```bash
-python run_finetuning.py --task_mod Retrieval --model_name LaBraM --finetune_mod full --dataset Things-EEG --norm_method z_score --epochs 40 --batch_size 512 --lr 5e-4 --subject_mod single --subject_id 8 --seed 0
+python run_finetuning.py --model_name CodeBrain --dataset Things-EEG --task_mod Retrieval --subject_mod cross --finetune_mod full --norm_method z_score --batch_size 512 --epochs 40 --lr 5e-4 --subject_id 1 --sampling_rate 200 --seed 42 --weight_decay 0.05 --num_workers 16 --logger
 ```
 ```bash
 python run_finetuning.py --task_mod Retrieval --model_name EEGPT --finetune_mod full --dataset Things-EEG --norm_method z_score --epochs 40 --batch_size 512 --lr 5e-4 --subject_mod single --subject_id 8 --seed 0

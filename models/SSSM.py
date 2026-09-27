@@ -242,7 +242,7 @@ class SSSM(nn.Module):
             x_f = self.lm_head_f(x)
             return (x_t, x_f)
         else:
-            return x.squeeze()
+            return x
 
 
 class PatchEmbedding(nn.Module):
